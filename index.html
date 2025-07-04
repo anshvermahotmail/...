@@ -1,1 +1,25 @@
-"Hello World" 
+<!DOCTYPE html>
+<html>
+<head>
+  <title>2FA Test - GitHub Pages</title>
+  <meta charset="UTF-8" />
+</head>
+<body>
+  <h1>2FA with Authenticator App</h1>
+
+  <div id="step-1">
+    <button onclick="generateSecret()">1. Generate QR Code</button>
+    <div id="qrcode"></div>
+    <p><strong>Secret:</strong> <span id="secret"></span></p>
+  </div>
+
+  <div id="step-2" style="margin-top: 20px;">
+    <input type="text" id="token" placeholder="Enter 6-digit code" maxlength="6">
+    <button onclick="verifyToken()">Verify Code</button>
+    <p id="result"></p>
+  </div>
+
+  <script src="otplib.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
