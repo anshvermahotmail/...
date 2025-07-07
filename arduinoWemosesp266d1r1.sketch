@@ -1,0 +1,176 @@
+#include <ESP8266WiFi.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+extern "C" {
+  #include "user_interface.h"
+}
+
+// Config
+const char* ssid = "Join_WhatsApp_Chai";
+const char* whatsappLink = "https://chat.whatsapp.com/afsdfsad";
+IPAddress apIP(192, 168, 4, 1);
+const byte DNS_PORT = 53;
+
+DNSServer dnsServer;
+ESP8266WebServer webServer(80);
+
+// State
+bool apOff = false;
+unsigned long restartTime = 0;
+int joinCounter = 0;
+
+#define MAX_MESSAGES 10
+String messages[MAX_MESSAGES];
+String macs[MAX_MESSAGES];
+int messageCount = 0;
+
+// Return MAC of latest connected client
+String getClientMac() {
+  uint8_t lastIPByte = webServer.client().remoteIP()[3];
+   String ip = webServer.client().remoteIP().toString();
+  struct station_info *stat_info = wifi_softap_get_station_info();
+  if (stat_info != NULL) {
+    uint8_t *mac = stat_info->bssid;
+    char macStr[18];
+    sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    wifi_softap_free_station_info();
+    return String(lastIPByte);
+  }
+  return "Unknown";
+}
+
+void servePortal() {
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Join WhatsApp</title>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+  html += "<style>body{font-family:sans-serif;text-align:center;margin:20px;}button,input{padding:10px;margin:10px;font-size:16px;}img{margin-top:20px;}</style>";
+  html += "<script>";
+  html += "function joinWhatsApp() {";
+  html += "  fetch('/disconnect');";
+  html += "  document.body.innerHTML='<h2>WiFi disconnecting...</h2><p>Opening WhatsApp...</p>';";
+  html += "  setTimeout(function(){ window.location.href='" + String(whatsappLink) + "'; }, 3000);";
+  html += "}";
+  html += "</script></head><body>";
+
+  html += "<h2>Welcome to <em>Chai Pe Charcha ☕️</em></h2>";
+  html += "<p><strong>People who joined: " + String(joinCounter) + "</strong></p>";
+  html += "<button onclick='joinWhatsApp()'>Join WhatsApp Group</button>";
+  html += "<p><small>WiFi will disconnect to use mobile data.</small></p>";
+  html += "<p>Or scan QR:</p>";
+  html += "<img src='https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + String(whatsappLink) + "' alt='QR Code'><hr>";
+
+  html += "<h3>iPhone Instructions 📲</h3><ol>";
+  html += "<li>Tap <strong>Cancel</strong> on top right of this screen</li>";
+  html += "<li>Open Safari or Chrome</li>";
+  html += "<li>Go to: <code>192.168.4.1</code></li>";
+  html += "<li>Tap 'Join WhatsApp' again</li></ol>";
+  html += "<p>Or copy this link:<br><strong>" + String(whatsappLink) + "</strong></p><hr>";
+
+  html += "<h3>Live Messages 💬</h3>";
+  html += "<form action='/message' method='GET'>";
+  html += "<input name='msg' maxlength='50' placeholder='Your message here...'>";
+  html += "<input type='submit' value='Share'>";
+  html += "</form>";
+
+  html += "<div style='border:1px solid #ccc;max-height:180px;overflow-y:auto;margin-top:10px;'>";
+  html += "<iframe src='/messages' width='100%' height='180' frameborder='0'></iframe>";
+  html += "</div>";
+
+html += "<h3>Quick Actions 🔗</h3>";
+html += "<a href='https://chat.whatsapp.com/FadMQKmekDFA9IKnlD0byt' target='_blank'>";
+html += "<button style='margin:10px;padding:12px 20px;font-size:16px;'>📲 Join WhatsApp Group</button></a>";
+html += "<a href='tel:xxxxxxxxx'>";
+html += "<button style='margin:10px;padding:12px 20px;font-size:16px;'>📞 Call Us: xxxxxxxx</button></a>";
+
+  html += "</body></html>";
+  webServer.send(200, "text/html", html);
+}
+
+void startAP() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+  WiFi.softAP(ssid);
+  dnsServer.start(DNS_PORT, "*", apIP);
+  webServer.begin();
+  Serial.println("AP started: " + String(ssid));
+}
+
+void stopAP() {
+  dnsServer.stop();
+  webServer.stop();
+  WiFi.softAPdisconnect(true);
+  Serial.println("AP stopped");
+  apOff = true;
+  restartTime = millis() + 15000;
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  startAP();
+
+  webServer.on("/", []() {
+    joinCounter++;
+    servePortal();
+  });
+
+  webServer.on("/hotspot-detect.html", servePortal); // iOS captive
+  webServer.on("/generate_204", []() {               // Android captive
+    webServer.sendHeader("Location", "/");
+    webServer.send(302, "text/plain", "");
+  });
+
+  webServer.on("/disconnect", []() {
+    webServer.send(200, "text/plain", "Disconnecting...");
+    stopAP();
+  });
+
+  webServer.on("/message", []() {
+    if (webServer.hasArg("msg")) {
+      String msg = webServer.arg("msg").substring(0, 50);
+      String mac = getClientMac();
+      if (msg.length() > 0) {
+        if (messageCount < MAX_MESSAGES) {
+          for (int i = messageCount; i > 0; i--) {
+            messages[i] = messages[i - 1];
+            macs[i] = macs[i - 1];
+          }
+          messages[0] = msg;
+          macs[0] = mac;
+          messageCount++;
+        } else {
+          for (int i = MAX_MESSAGES - 1; i > 0; i--) {
+            messages[i] = messages[i - 1];
+            macs[i] = macs[i - 1];
+          }
+          messages[0] = msg;
+          macs[0] = mac;
+        }
+      }
+    }
+    joinCounter++;
+    servePortal();
+  });
+
+  webServer.on("/messages", []() {
+    String msgHtml = "<html><head><meta http-equiv='refresh' content='10'>";
+    msgHtml += "<style>body{font-family:sans-serif;font-size:15px;margin:0;padding:10px;}li{margin-bottom:5px;}</style></head><body><ul style='padding-left:0;list-style:none;'>";
+    for (int i = 0; i < messageCount; i++) {
+      msgHtml += "<li><b>[" + macs[i] + "]</b>: " + messages[i] + "</li>";
+    }
+    msgHtml += "</ul></body></html>";
+    webServer.send(200, "text/html", msgHtml);
+  });
+
+  webServer.onNotFound(servePortal);
+}
+
+void loop() {
+  if (!apOff) {
+    dnsServer.processNextRequest();
+    webServer.handleClient();
+  } else if (millis() > restartTime) {
+    apOff = false;
+    startAP();
+  }
+}
