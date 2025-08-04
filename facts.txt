@@ -1,0 +1,12 @@
+The sky is blue.
+The color of the sky is blue.
+if you look up you see the sky that is blue.
+Python is a programming language.dot net is a programming language
+hi, how are you
+why are you , usually means location of where are you
+i am in pune
+q: where are you? a: i am in pune
+v1: version
+q: hi a: hi
+q: where do you stay a: in pune
+q: ? a: .

@@ -1,0 +1,97 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Mini LLM Fact Chat</title>
+  <style>
+    html,body {height:100%;margin:0;padding:0;font-family:sans-serif;background:#f5f5fa;}
+    #container {max-width:960px;margin:0 auto;display:flex;flex-direction:row;}
+    #chatBox {
+      width:60vw; min-width:320px; max-width:700px; margin-top:30px;
+      height:72vh; border:1px solid #ccc; background:white; border-radius:7px;
+      padding:24px 16px 70px 16px; box-sizing:border-box;
+      overflow-y:auto; font-size:18px; position:relative;
+    }
+    #formArea {
+      position:absolute; left:10px; bottom:18px; width:90%;
+    }
+    #promptBox {
+      font-size:18px; width:74%; padding:7px;
+      border-radius:3px; border:1px solid #aaa;
+    }
+    #sendBtn {
+      font-size:18px; margin-left:9px; padding:7px 18px;
+      background:#1b56ae; color:#fff; border:none; border-radius:3px;
+    }
+    #debugPanel {
+      width:34vw; min-width:240px; max-width:420px; padding:12px 10px;
+      background:#23272e; color:#d1d9e7; font-size:14px; margin-left:34px;
+      height:88vh; margin-top:10px; overflow-y:auto; border-radius:10px;
+    }
+    .chatmsg { margin:0 0 20px 0; }
+    .user { color:#0b3990; }
+    .bot { color:#191919; }
+    h3 { margin-top:0; }
+  </style>
+</head>
+<body>
+  <div id="container">
+      <div id="chatBox">
+        <h3>🔎 Ask: “John” or “Aisha”…</h3>
+        <div id="msgs"></div>
+        <form id="formArea" onsubmit="sendMsg();return false;">
+          <input autofocus id="promptBox" autocomplete="off" type="text" placeholder="Type a name…" />
+          <button id="sendBtn" type="submit">Send</button>
+        </form>
+      </div>
+      <div id="debugPanel"><b>Tech Log</b> <div id="dlog"></div></div>
+  </div>
+<script>
+  function appendMsg(user, msg) {
+    let msgs = document.getElementById("msgs");
+    let div = document.createElement("div");
+    div.className = "chatmsg";
+    div.innerHTML = "<b class='" + user + "'>" + (user==="user"?"You: ":"Bot: ") + "</b>" + msg;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  function showLog(log) {
+    let dlog = document.getElementById("dlog");
+    dlog.innerHTML = "";
+    log.forEach(line => {
+      let p = document.createElement("div");
+      p.textContent = line;
+      dlog.appendChild(p);
+    });
+    dlog.scrollTop = dlog.scrollHeight;
+  }
+  document.getElementById("promptBox").addEventListener("keydown", function(e) {
+    if(e.key==="Enter") {
+      sendMsg();
+      e.preventDefault();
+    }
+  });
+  function refocus() { document.getElementById('promptBox').focus(); }
+  window.onload = refocus;
+  async function sendMsg() {
+    let box = document.getElementById("promptBox");
+    let usertxt = box.value.trim();
+    if(!usertxt) return;
+    appendMsg("user", usertxt);
+    box.value = '';
+    fetch("/ask", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({query: usertxt})
+    })
+    .then(r=>r.json())
+    .then(js => {
+      appendMsg("bot", js.answer.replace(/\n/g,"<br>"));
+      showLog(js.log);
+      refocus();
+    });
+  }
+</script>
+</body>
+</html>
